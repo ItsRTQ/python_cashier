@@ -3,8 +3,6 @@ import os
 """This module defines the class object that represents a cashier"""
 class Cashier:
     cashier_number = 0
-    current_cart = []
-    daily_sells = 0
 
     def __init__(self, active=False, user=None, number=None) -> None:
         if not isinstance(active, bool):
@@ -25,50 +23,70 @@ class Cashier:
             print("Invalid user, setting user to None")
             self.user = None
 
+        self.current_cart = {}
+        self.daily_sells = 0.00
         self.active = active
         self.__cash = 0
-
+    
     @classmethod
-    def getDailySells(cls):
-        rounded_amount = "{:.2f}".format(cls.daily_sells)
+    def from_json(cls, filename):
+        if os.path.exists(filename):
+            with open(filename, 'r') as file:
+                loaded_data = json.load(file)
+            return loaded_data
+        else:
+            raise FileExistsError("File [{}] was not found".format(filename))
+    @classmethod
+    def getTransactions(cls, Transactions):
+        Total_transactions = 0
+        if not isinstance(Transactions, list) and all(isinstance(ele, dict) for ele in Transactions):
+            raise TypeError("The recipts must be a list of dictionarys")
+        for num, i in enumerate(Transactions, start=1):
+            print("\n>>>>>>CART {}".format(num))
+            total = 0
+            for j in i:
+                print("{} = {}".format(j, i[j]))
+                total += i[j]
+            Total_transactions += float("{:.2f}".format(total))
+            print("Total of: {:.2f}".format(total))
+        print("\nTotal in transactions was {:.2f}".format(Total_transactions))
+        return float("{:.2f}".format(Total_transactions))
+
+    def CashOut(self):
+        if self.__cash >= 1000.00:
+            print("Calling manager, cashout needed")
+            self.__cash = 200.00
+
+    def getDailySells(self):
+        rounded_amount = "{:.2f}".format(self.daily_sells)
         return rounded_amount
 
-    @classmethod
-    def update_daily_sells(cls, amount=0) -> None:
-        cls.daily_sells += amount
+    def update_daily_sells(self, amount=0) -> None:
+        self.daily_sells += amount
 
-    @classmethod
-    def clearCart(cls) -> None:
-        cls.current_cart = []
+    def clearCart(self) -> None:
+        self.current_cart = []
 
-    @classmethod
-    def recipt(cls, items) -> None:
-        cls.clearCart()
-        for item in items:
-            cls.current_cart.append(item)
+    def recipt(self, items={}) -> None:
+        if items:
+            self.clearCart()
+            self.current_cart = items
 
-    @classmethod
-    def uploadRecipt(cls) -> None:
-        filename = "Transactions.json"
+    def uploadRecipt(self) -> None:
+        filename = "Transactions_" + str(self.number) + ".json"
+        existing_data = []
         if os.path.exists(filename):
-            with open(filename, 'a') as file:
-                if os.stat(filename).st_size != 0:
-                    file.write(",\n")
-
-                for item in cls.current_cart:
-                    json.dump(item, file)
-                    file.write('\n')
-        else:
-            with open(filename, 'w') as file:
-                for item in cls.current_cart:
-                    json.dump(item, file)
-                    file.write('\n')
+            with open(filename, 'r') as file:
+                existing_data = json.load(file)
+        existing_data.append(self.current_cart)
+        with open(filename, 'w') as file:
+            json.dump(existing_data, file, indent=2)
 
     @property
     def getUser(self):
         return self.user
     @getUser.setter
-    def setUset(self, name):
+    def setUser(self, name):
         if isinstance(name, str):
             self.user = name
         else:
@@ -76,7 +94,7 @@ class Cashier:
 
     @property
     def getCash(self):
-        return self.__cash
+        return "{:.2f}".format(self.__cash)
     @getCash.setter
     def addCash(self, value):
         if isinstance(value, float):
@@ -86,6 +104,7 @@ class Cashier:
             passcode = input("Entere the admin password: ")
             if passcode == "ADMIN":
                 self.__cash = value
+                self.CashOut()
             else:
                 raise ValueError("Incorrect password, notifing manager. Please wait.")
         else:
@@ -93,22 +112,60 @@ class Cashier:
 
     def power(self):
         if self.active:
-            print("Turning off, bye :D")
-            self.active = False
+            name = input("Enter Cashier Name: ")
+            if name:
+                print("Turning off, bye :D")
+                self.active = False
+            else:
+                print("Invalid name, denided Activation")
         else:
             print("Turning on, Welcome! :D")
             self.active = True
 
-    def charge(self, items):
+    def charge(self, items={}):
         total = 0.00
-        if isinstance(items, list):
-            if all(isinstance(item, dict) for item in items):
-                for item in items:
-                    for element in item:
-                        total += item[element]
-            else:
-                raise TypeError("Fail counting items total")
+        if isinstance(items, dict):
+            self.recipt(items)
+            for item in items:
+                total += items[item]
         else:
             raise ValueError("ERROR, scanning items")
-        Cashier.update_daily_sells(total)
         return total
+
+    def pay(self, amount_to_charge):
+        self.update_daily_sells(amount_to_charge)
+        while amount_to_charge != 0:
+            amount_to_charge = float("{:.2f}".format(amount_to_charge))
+            #recive = float(input("Enter given amount: "))
+            recive = amount_to_charge
+            change = 0.00
+            if recive > amount_to_charge:
+                change = recive - amount_to_charge
+                self.__cash += amount_to_charge
+                amount_to_charge = 0
+                print("Return {:.2f}".format(change))
+            elif recive < amount_to_charge:
+                amount_to_charge -= recive
+                self.__cash += recive
+                print("New total is {:.2f}".format(amount_to_charge))
+            elif recive == amount_to_charge:
+                amount_to_charge = 0
+                self.__cash += recive
+        self.uploadRecipt()
+
+    def scan_cart(self, cart):
+        if not isinstance(cart, dict):
+            raise TypeError("Invalid, cart must be a dict")
+        amount_to_charge = self.charge(cart)
+        #print("Your total is: {:.2f}".format(amount_to_charge))
+        #is_paying = input("--->>> Do you want to charge: ")
+        #if is_paying.lower() == "yes":
+        #    self.pay(float("{:.2f}".format(amount_to_charge)))
+        #else:
+        #    pass
+        self.pay(float("{:.2f}".format(amount_to_charge)))
+
+    def amountSold(self):
+        sentence = "Cashier " + self.user + " sold today: {:.2f}".format(self.daily_sells)
+        print(sentence)
+        return float("{:.2f}".format(self.daily_sells))
